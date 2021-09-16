@@ -50,5 +50,5 @@ jobs:
           file: Dockerfile.${{ matrix.platform }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-arg: ZED_SDK_VERSION=${{ matrix.zed_version }}
+          build-args: ZED_SDK_VERSION=${{ matrix.zed_version }}
       
