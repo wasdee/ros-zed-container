@@ -1,0 +1,86 @@
+# Based on https://gitlab.com/nvidia/container-images/l4t-base/-/blob/master/Dockerfile.l4t
+# https://github.com/dusty-nv/jetson-containers/blob/master/Dockerfile.ros.foxy
+# https://github.com/codustry/jetson-containers/blob/master/Dockerfile.ros.foxy
+ARG L4T_MINOR_VERSION=5.0
+FROM codustry/ros:foxy-ros-base-l4t-r32.${L4T_MINOR_VERSION}
+
+#
+# ZED Jet
+# https://github.com/stereolabs/zed-docker/blob/master/3.X/jetpack_4.X/devel/Dockerfile
+#
+ARG ZED_SDK_VERSION=3.5
+ARG JETPACK_MAJOR=4
+ARG JETPACK_MINOR=5
+
+#This environment variable is needed to use the streaming features on Jetson inside a container
+ENV LOGNAME root
+ENV DEBIAN_FRONTEND noninteractive
+RUN apt-get update -y && apt-get install --no-install-recommends  lsb-release wget less udev sudo apt-transport-https build-essential cmake openssh-server libv4l-0 libv4l-dev v4l-utils binutils xz-utils bzip2 lbzip2 curl ca-certificates libegl1 python3 -y && \
+    echo "# R32 (release), REVISION: 5.0" > /etc/nv_tegra_release ; \
+    wget -q --no-check-certificate -O ZED_SDK_Linux_JP.run https://download.stereolabs.com/zedsdk/${ZED_SDK_VERSION}/jp${JETPACK_MAJOR}${JETPACK_MINOR}/jetsons && \
+    chmod +x ZED_SDK_Linux_JP.run ; ./ZED_SDK_Linux_JP.run silent skip_tools && \
+    rm -rf /usr/local/zed/resources/* \
+    rm -rf ZED_SDK_Linux_JP.run && \
+    rm -rf /var/lib/apt/lists/*
+
+#This symbolic link is needed to use the streaming features on Jetson inside a container
+RUN ln -sf /usr/lib/aarch64-linux-gnu/tegra/libv4l2.so.0 /usr/lib/aarch64-linux-gnu/libv4l2.so
+
+
+# # Configure Enviroment for ROS
+RUN echo 'source /opt/ros/foxy/install/setup.bash' >> ~/.bashrc
+# RUN echo "source /opt/ros/eloquent/setup.bash" >> ~/.bashrc
+RUN echo 'source /usr/share/colcon_cd/function/colcon_cd.sh' >> ~/.bashrc
+# RUN echo "export _colcon_cd_root=~/ros2_install" >> ~/.bashrc
+
+# echo $LD_LIBRARY_PATH
+RUN echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-10.2/targets/aarch64-linux/lib/stubs:/opt/ros/foxy/install/lib' >> ~/.bashrc
+
+WORKDIR /root/Downloads
+RUN wget https://developer.nvidia.com/embedded/L4T/r32_Release_v5.0/T186/Tegra186_Linux_R32.5.0_aarch64.tbz2
+RUN tar xf Tegra186_Linux_R32.5.0_aarch64.tbz2
+RUN cd Linux_for_Tegra && \
+    sed -i 's/config.tbz2\"/config.tbz2\" --exclude=etc\/hosts --exclude=etc\/hostname/g' apply_binaries.sh && \
+    sed -i 's/install --owner=root --group=root \"${QEMU_BIN}\" \"${L4T_ROOTFS_DIR}\/usr\/bin\/\"/#install --owner=root --group=root \"${QEMU_BIN}\" \"${L4T_ROOTFS_DIR}\/usr\/bin\/\"/g' nv_tegra/nv-apply-debs.sh && \
+    sed -i 's/LC_ALL=C chroot . mount -t proc none \/proc/ /g' nv_tegra/nv-apply-debs.sh && \
+    sed -i 's/umount ${L4T_ROOTFS_DIR}\/proc/ /g' nv_tegra/nv-apply-debs.sh && \
+    sed -i 's/chroot . \//  /g' nv_tegra/nv-apply-debs.sh && \
+    ./apply_binaries.sh -r / --target-overlay
+RUN rm -rf Tegra210_Linux_R32.4.4_aarch64.tbz2 && \
+    rm -rf Linux_for_Tegra && \
+    echo "/usr/lib/aarch64-linux-gnu/tegra" > /etc/ld.so.conf.d/nvidia-tegra.conf && ldconfig
+
+WORKDIR /usr/local/zed
+ENV CUDA_HOME=/usr/local/cuda
+WORKDIR /root/ros2_ws/src/
+RUN source /opt/ros/foxy/install/setup.bash && cd ../ && colcon build --symlink-install
+RUN git clone https://github.com/stereolabs/zed-ros2-wrapper.git
+RUN git clone https://github.com/ros/diagnostics.git && cd diagnostics && git checkout foxy
+WORKDIR /root/ros2_ws
+RUN source /opt/ros/foxy/install/setup.bash && source $(pwd)/install/local_setup.bash && rosdep update && \
+    rosdep install --from-paths src --ignore-src -r --rosdistro ${ROS_DISTRO}  -y && \
+    colcon build --symlink-install --cmake-args " -DCMAKE_BUILD_TYPE=Release" " -DCMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs" " -DCUDA_CUDART_LIBRARY=/usr/local/cuda/lib64/stubs" " -DCMAKE_CXX_FLAGS='-Wl,--allow-shlib-undefined'" && \
+    echo source $(pwd)/install/local_setup.bash >> ~/.bashrc && \
+    source ~/.bashrc
+
+
+
+## FOR DEVELOPMENT
+# Install SSH :: ref https://dev.to/s1ntaxe770r/how-to-setup-ssh-within-a-docker-container-i5i
+# RUN apt-get update -y && apt install openssh-server -y 
+EXPOSE 22
+COPY authorized_keys /root/.ssh/authorized_keys
+COPY sshd_config /etc/ssh/sshd_config
+RUN service ssh start
+RUN echo "root:root" | chpasswd
+
+# sudo -H pip install -U jetson-stats
+
+
+## END FOR DEVELOPMENT
+
+WORKDIR /app
+
+# CMD ["/bin/bash"]
+COPY start.sh ./start.sh
+CMD ["/bin/bash", "start.sh"]
