@@ -15,7 +15,7 @@ ARG JETPACK_MINOR=5
 #This environment variable is needed to use the streaming features on Jetson inside a container
 ENV LOGNAME root
 ENV DEBIAN_FRONTEND noninteractive
-RUN apt-get update -y && apt-get install --no-install-recommends  lsb-release wget less udev sudo apt-transport-https build-essential cmake openssh-server libv4l-0 libv4l-dev v4l-utils binutils xz-utils bzip2 lbzip2 curl ca-certificates libegl1 python3 -y && \
+RUN apt-get update -y && apt-get install --no-install-recommends  lsb-release wget less udev sudo apt-transport-https build-essential cmake libv4l-0 libv4l-dev v4l-utils binutils xz-utils bzip2 lbzip2 curl ca-certificates libegl1 python3 -y && \
     echo "# R32 (release), REVISION: 5.0" > /etc/nv_tegra_release ; \
     wget -q --no-check-certificate -O ZED_SDK_Linux_JP.run https://download.stereolabs.com/zedsdk/${ZED_SDK_VERSION}/jp${JETPACK_MAJOR}${JETPACK_MINOR}/jetsons && \
     chmod +x ZED_SDK_Linux_JP.run ; ./ZED_SDK_Linux_JP.run silent skip_tools && \
@@ -64,23 +64,3 @@ RUN source /opt/ros/foxy/install/setup.bash && source $(pwd)/install/local_setup
     source ~/.bashrc
 
 
-
-## FOR DEVELOPMENT
-# Install SSH :: ref https://dev.to/s1ntaxe770r/how-to-setup-ssh-within-a-docker-container-i5i
-# RUN apt-get update -y && apt install openssh-server -y 
-EXPOSE 22
-COPY authorized_keys /root/.ssh/authorized_keys
-COPY sshd_config /etc/ssh/sshd_config
-RUN service ssh start
-RUN echo "root:root" | chpasswd
-
-# sudo -H pip install -U jetson-stats
-
-
-## END FOR DEVELOPMENT
-
-WORKDIR /app
-
-# CMD ["/bin/bash"]
-COPY start.sh ./start.sh
-CMD ["/bin/bash", "start.sh"]
