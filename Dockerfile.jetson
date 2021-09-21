@@ -63,4 +63,6 @@ RUN source /opt/ros/foxy/install/setup.bash && source $(pwd)/install/local_setup
     echo source $(pwd)/install/local_setup.bash >> ~/.bashrc && \
     source ~/.bashrc
 
-
+RUN sed --in-place --expression \
+      '$isource "/root/ros2_ws/install/setup.bash"' \
+      /ros_entrypoint.sh
